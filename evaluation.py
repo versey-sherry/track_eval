@@ -107,6 +107,7 @@ def process_multiple(txt_file):
     pass
 
 #process cell tracking ground truth that uses xml annotation
+#return a dictionary with frame as key and a list of [<id>, <x>, <y>] presented in the frame
 def porcess_cellgt(xml_file):
     tree = ET.parse(xml_file)
     root = tree.getroot()
@@ -128,21 +129,13 @@ def porcess_cellgt(xml_file):
         if ele.tag == 's':
             dict_by_id[current_id].append([ele.attrib['i'], ele.attrib['x'], ele.attrib['y']])
 
-    # process the file to be <frame> <id> <x> <y>
-    frame_id = []
+    # process the file to be a gt dictionary with key being frame number
+    gt = defaultdict(list)
     for key in dict_by_id.keys():
         for item in dict_by_id.get(key):
-            #frame number starts at 1
-            #print(item)
-            frame_id.append([int(item[0])+1, key, int(float(item[1]))-2, int(float(item[2]))-2])
-
-    # output txt file following format <frame> <id> <x> <y> frame starts from 1
-    with open('gt.txt', 'w') as file:
-        for item in frame_id:
-            item ='{}, {}, {}, {}, {}, {}'.format(item[0], item[1], item[2], item[3], 5, 5)
-            file.write('%s\n' % str(item))
-
-
+            gt[int(item[0])+1].append([int(key), int(float(item[1])), int(float(item[2]))])
+    #print(gt.keys())
+    return gt
 
 
 
