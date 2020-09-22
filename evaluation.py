@@ -98,15 +98,37 @@ def compute_iou(prediction, gt):
 #mask iou is computed via sklearn
 #https://scikit-learn.org/stable/modules/generated/sklearn.metrics.jaccard_score.html#sklearn.metrics.jaccard_score
 
-#Processing single object ground truth
+#Process single object ground truth
+#ground truth format <x>, <y>, <w>, <h>
+#return a ditionary with frame as key and a list of [<x>, <y>, <w>, <h>] presented in the frame
 def process_single(txt_file):
-    pass
+    gt = defaultdict(list)
+    a = 1
+    with open(txt_file) as file:
+        for line in file:
+            try:
+                gt[a].append(list(eval(line)))
+            except:
+                line = [int(item) for item in line.split()]
+                gt[a].append(line)
+            a+=1
+    return gt
 
-#process multiple object ground truth
+
+#Process multiple object ground truth
+#ground truth format is <frame>, <id>, <bb_left>, <bb_top>, <bb_width>, <conf>, <class>, <visibility>
+#return a ditionary with frame as key and a list of [<x>, <y>, <w>, <h>, <conf>, <class>, <visibility>] presented in the frame
 def process_multiple(txt_file):
-    pass
+    gt = defaultdict(list)
+    with open(txt_file) as file:
+        #prediction format is <frame>, <id>, <bb_left>, <bb_top>, <bb_width>, <bb_height>, <conf>, <x>, <y>, <z>
+        for line in file:
+            line = list(eval(line))
+            gt[line[0]].append(line[1:])
+    return gt
 
-#process cell tracking ground truth that uses xml annotation
+
+#process C2C12 cell tracking ground truth that uses xml annotation
 #return a dictionary with frame as key and a list of [<id>, <x>, <y>] presented in the frame
 def porcess_cellgt(xml_file):
     tree = ET.parse(xml_file)
@@ -136,20 +158,6 @@ def porcess_cellgt(xml_file):
             gt[int(item[0])+1].append([int(key), int(float(item[1])), int(float(item[2]))])
     #print(gt.keys())
     return gt
-
-
-
-
-
-
-# read the prediction and gt txt and return a dictionary with number of frame as key (start from 1) and bbox as list
-def process_multiple(txt_file):
-    output_dict = defaultdict(list)
-    with open(txt_file) as file:
-        #prediction format is <frame>, <id>, <bb_left>, <bb_top>, <bb_width>, <bb_height>, <conf>, <x>, <y>, <z>
-        #gt format is <frame>, <id>, <bb_left>, <bb_top>, <bb_width>, <conf>, <class>, <visibility>
-        for line in file:
-            output_dict[eval(line)[0]].append(list(eval(line)[1:]))
 
 def single_eval(prediction, gt, threshold, single=True):
     #producing evaluation results for single video
