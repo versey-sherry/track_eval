@@ -98,35 +98,43 @@ def compute_iou(prediction, gt):
 #mask iou is computed via sklearn
 #https://scikit-learn.org/stable/modules/generated/sklearn.metrics.jaccard_score.html#sklearn.metrics.jaccard_score
 
-#Process single object ground truth
+#Process single object ground truth and predition
 #ground truth format <x>, <y>, <w>, <h>
+#predition format <x>, <y>, <w>, <h>
 #return a ditionary with frame as key and a list of [<x>, <y>, <w>, <h>] presented in the frame
 def process_single(txt_file):
-    gt = defaultdict(list)
+    info = defaultdict(list)
     a = 1
     with open(txt_file) as file:
         for line in file:
             try:
-                gt[a].append(list(eval(line)))
+                info[a].append(list(eval(line)))
             except:
                 line = [int(item) for item in line.split()]
-                gt[a].append(line)
+                info[a].append(line)
             a+=1
-    return gt
+    return info
 
 
-#Process multiple object ground truth
+#Process multiple object ground truth and prediction and cell tracking prediction
 #ground truth format is <frame>, <id>, <bb_left>, <bb_top>, <bb_width>, <conf>, <class>, <visibility>
-#return a ditionary with frame as key and a list of [<x>, <y>, <w>, <h>, <conf>, <class>, <visibility>] presented in the frame
+#prediction format <frame>, <id>, <bb_left>, <bb_top>, <bb_width>, <bb_height>, <conf>, <x>, <y>, <z>
+# cell tracking prediction format <frame> <id> <x> <y>
+# return a ditionary with frame as key and a list of [<id>, <x>, <y>, <w>, <h>, <conf>, ...] for multiple gt and pd
+# return a ditionary with frame as key and a list of [<id>, <x>, <y>] for cell prediction
 def process_multiple(txt_file):
-    gt = defaultdict(list)
+    info = defaultdict(list)
     with open(txt_file) as file:
-        #prediction format is <frame>, <id>, <bb_left>, <bb_top>, <bb_width>, <bb_height>, <conf>, <x>, <y>, <z>
+        #prediction format is 
         for line in file:
             line = list(eval(line))
-            gt[line[0]].append(line[1:])
-    return gt
+            info[line[0]].append(line[1:])
+    return info
 
+# process cell tracking prediction
+# prediction format <frame> <id> <x> <y>
+def process_cellpd(txt_file):
+    info = 
 
 #process C2C12 cell tracking ground truth that uses xml annotation
 #return a dictionary with frame as key and a list of [<id>, <x>, <y>] presented in the frame
@@ -158,6 +166,7 @@ def porcess_cellgt(xml_file):
             gt[int(item[0])+1].append([int(key), int(float(item[1])), int(float(item[2]))])
     #print(gt.keys())
     return gt
+
 
 def single_eval(prediction, gt, threshold, single=True):
     #producing evaluation results for single video
