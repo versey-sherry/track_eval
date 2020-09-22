@@ -130,3 +130,5 @@ dmypy.json
 
 # OSX file
 *.DS_Store
+
+gt_example/
