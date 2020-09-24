@@ -1,3 +1,7 @@
-Biker: Accuracy is 40.18 % Robustness is 48.59 %
-Diving: Accuracy is 47.2 % Robustness is 36.74 %
+Biker
+Accuracy, robustness
+40.18 % ,48.59 %
+Diving
+Accuracy, robustness
+47.2 % ,36.74 %
 TB-100: Accuracy is 43.69 % Robustness is 42.67 %

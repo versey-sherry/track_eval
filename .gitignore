@@ -133,3 +133,4 @@ dmypy.json
 
 gt_example/
 test.py
+results/

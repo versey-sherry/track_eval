@@ -41,6 +41,15 @@ python evaluation.py --prediction_dir result_example/sot_results/TB-100/goturn \
 --threshold 0.5 \
 --writeout Ture
 
+python evaluation.py --prediction_dir result_example/mot_results/MOT20/FairMOT \
+--video_dir gt_example/MOT20 \
+--gt_name gt/gt.txt \
+--evaluation_type multiple \
+--threshold 0.5 \
+--writeout Ture
+
+
+
 '''
 
 import os
@@ -266,11 +275,25 @@ def multiple_eval(prediction, gt, save_dir, threshold, writeout=False):
         os.makedirs(save_dir)
         print('Making new save dir')
 
+    #preparation for writing out the video
+    if writeout:
+        img_dir = os.path.join('/'.join(gt.split('/')[0:-2]), 'img1')
+        print(img_dir)
+        video_name = prediction.split('/')[-1].split('.')[0]
+        images = sorted([file for file in os.listdir(img_dir) if '.jpg' in file or '.jpeg' in file])
+        img = cv2.imread(os.path.join(img_dir, images[0]))
+        height, width, _ = img.shape
+        size = (width, height)
+        file_name = file_name = '_'.join([prediction.split('/')[-2], video_name, 'video.mp4'])
+        file_name = os.path.join(save_dir, file_name)
+        print('Video saved to', file_name)
+        out = cv2.VideoWriter(file_name,cv2.VideoWriter_fourcc(*'MP4V'), 20, size)
+
     # Create an accumulator that will be updated during each frame
     acc = mm.MOTAccumulator(auto_id=True)
 
     #predcition needs a few frame to start
-    for key in sorted(prediction_dict.keys())[0:3]:
+    for key in sorted(prediction_dict.keys()):
         predcition_in_frame = prediction_dict.get(key)
         gt_in_frame = gt_dict.get(key)
 
@@ -286,28 +309,51 @@ def multiple_eval(prediction, gt, save_dir, threshold, writeout=False):
                 prediction_object.append(item[0])
                 prediction_bbox_list.append([item[1], item[2], item[3], item[4]])
         prediction_bbox_list = np.array(prediction_bbox_list)
-        print('prediction_object', len(prediction_object))
-        print('prediction box', len(prediction_bbox_list))
-
+        #print('prediction_object', len(prediction_object))
+        #print('prediction box', len(prediction_bbox_list))
 
         for item in gt_in_frame:
             if item[5]>0:
                 gt_object.append(item[0])
                 gt_bbox_list.append([item[1], item[2], item[3], item[4]])
         gt_bbox_list = np.array(gt_bbox_list)
-        print('gt_object', len(gt_object))
-        print('gt box', len(gt_bbox_list))
+        #print('gt_object', len(gt_object))
+        #print('gt box', len(gt_bbox_list))
 
         #compute distance using solver
+        # 0 when the rectangles overlap perfectly and 1 when the overlap is zero, therefore use 1-threshold instead of threshold
+        # nan indicate the ground truth and hypothesis can't be paried
+        gt_pred_distance = mm.distances.iou_matrix(gt_bbox_list, prediction_bbox_list, max_iou = 1-threshold)
+        #print('gt len', len(gt_bbox_list))
+        #print('pred len', len(prediction_bbox_list))
+        #print('distance matrix', np.array(gt_pred_distance).shape) #dimension correct
+        
+        #update the event accumulator
+        #acc.update update the pairwise relation solver and returns the frame id
+        frameid = acc.update(gt_object, prediction_object, gt_pred_distance)
+        #print(acc.mot_events.loc[frameid])
 
-        gt_pred_distance = mm.distances.iou_matrix(gt_bbox_list, prediction_bbox_list)
-        print('gt len', len(gt_bbox_list))
-        print('pred len', len(prediction_bbox_list))
 
-        print('distance matrix', gt_pred_distance.shape) #dimension correct
+    # pandas dataframe has events for all the frames
+    #print(acc.mot_events)
 
-    # update once for each frame
-    #acc.update([])
+    #Accumulator has been populated, compute metrics
+    mh = mm.metrics.create()
+    # Change this line to include useful metrics
+    # more detail regarding the metrics is here https://github.com/cheind/py-motmetrics
+    summary = mh.compute(acc, metrics=['num_frames', 'mota', 'motp', 'precision', 'recall',
+        'num_switches', 'num_false_positives', 'num_misses', 'mostly_tracked', 'mostly_lost'], name=video_name)
+    #summary = mh.compute(acc, metrics=mm.metrics.motchallenge_metrics, name='acc')
+    report = ''
+    for col in summary.columns:
+        text = ' '.join([str(col), 'is', str(round(summary.iloc[0][col],4))])+'\n'
+        report = ''.join([report, text])
+
+    mota = summary.iloc[0]['mota']
+    motp = summary.iloc[0]['motp']
+    precision = summary.iloc[0]['precision']
+    recall = summary.iloc[0]['recall']
+    return video_name, report, mota, motp, precision, recall
 
 def cell_eval(prediction, gt, threshold, single=True):
     pass    
@@ -338,7 +384,10 @@ def main():
         accuracy_list = []
         robustness_list = []
     elif args.evaluation_type == 'multiple':
-        pass
+        mota_list = []
+        motp_list = []
+        precision_list = []
+        recall_list = []
     else:
         pass
 
@@ -350,13 +399,22 @@ def main():
 
         if args.evaluation_type == 'single':
             name, accuracy, robustness = single_eval(prediction, gt, args.save_dir, args.threshold, writeout = args.writeout)
+            
             accuracy_list.append(accuracy)
             robustness_list.append(robustness)
-            text = '{}: Accuracy is {} % Robustness is {} %'.format(name, round(accuracy*100, 2), round (robustness*100, 2))
+            text = '{}\nAccuracy is {}%, robustness is {}%'.format(name, round(accuracy*100, 2), round (robustness*100, 2))
             print(text)
             output_list.append(text)
         elif args.evaluation_type == 'multiple':
-            pass
+            name, report, mota, motp, precision, recall = multiple_eval(prediction, gt, args.save_dir, args.threshold, writeout = args.writeout)
+
+            mota_list.append(mota)
+            motp_list.append(motp)
+            precision_list.append(precision)
+            recall_list.append(recall)
+            text = '{}\n{}'.format(name, report)
+            print(text)
+            output_list.append(text)
         else:
             pass
 
@@ -371,14 +429,41 @@ def main():
         else:
             print('No robustness')
 
-        text = '{}: Accuracy is {} % Robustness is {} %'.format(
+        text = '{}: Accuracy is {}% Robustness is {}%'.format(
             args.video_dir.split('/')[-1], 
             round(total_accuracy*100, 2), 
             round(total_robustness *100, 2))
         #print(text)
         output_list.append(text)
     elif args.evaluation_type == 'multiple':
-        pass
+        if len(mota_list) >0:
+            total_mota = sum(mota_list)/len(mota_list)
+        else:
+            print('No MOTA')
+
+        if len(motp_list) >0:
+            total_motp = sum(motp_list)/len(motp_list)
+        else:
+            print('No MOTP')
+
+        if len(precision_list) >0:
+            total_precision = sum(precision_list)/len(precision_list)
+        else:
+            print('No Precision')
+
+        if len(recall_list) >0:
+            total_recall = sum(recall_list)/len(recall_list)
+        else:
+            print('No Recall')
+
+        text = '{}: M0TA is {}% MOTP is {}% Precision is {}% Recall is {}%'.format(
+            args.video_dir.split('/')[-1], 
+            round(total_mota*100, 2), 
+            round(total_motp *100, 2),
+            round(total_precision *100, 2),
+            round(total_recall *100, 2))
+        print(text)
+        output_list.append(text)
     else:
         pass
 
