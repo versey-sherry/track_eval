@@ -34,11 +34,11 @@ find . -maxdepth 2  -print -exec mv {} . \;
 
 '''
 example
-python evaluation.py --predcition_dir ../results/sot_results/TB-100 \
---video_dir ../data/single_tracking/TB-100 \
+python evaluation.py --prediction_dir result_example/sot_results/TB-100/goturn \
+--video_dir gt_example/TB-100 \
+--gt_name groundtruth_rect.txt \
 --evaluation_type single \
 --threshold 0.5 \
---save_dir \
 --writeout Ture
 
 '''
@@ -50,6 +50,8 @@ from glob import glob
 from sklearn.metrics import jaccard_score
 from collections import defaultdict, OrderedDict
 import xml.etree.ElementTree as ET
+import motmetrics as mm
+import numpy as np
 
 '''
 helper function for getting the frames. Video name is either the name of the video or the name of the folder that contains
@@ -188,7 +190,7 @@ def single_eval(prediction, gt, save_dir, threshold, writeout=False):
     #preparation for writing out the video
     if writeout:
         img_dir = os.path.join('/'.join(gt.split('/')[0:-1]), 'img')
-        print(img_dir)
+        #print(img_dir)
         video_name = prediction.split('/')[-1].split('.')[0]
         images = sorted([file for file in os.listdir(img_dir) if '.jpg' in file or '.jpeg' in file])
         img = cv2.imread(os.path.join(img_dir, images[0]))
@@ -222,7 +224,7 @@ def single_eval(prediction, gt, save_dir, threshold, writeout=False):
         #output videos
         if writeout:
             img = cv2.imread(os.path.join(img_dir, images[frame_num-1]))
-            print(images[frame_num-1])
+            #print(images[frame_num-1])
             #ploting prediction with red box
             img = cv2.rectangle(img, (prediction[0], prediction[1]), (prediction[2], prediction[3]), (0, 0, 255), 2)
             #ploting ground truth with green box
@@ -261,13 +263,75 @@ def visualization(prediction, gt, threshold):
 
 def main():
     parser = argparse.ArgumentParser(description='tracker evaluation')
-    parser.add_argument('--predcition_dir', type=str, help = 'path to the txt files of the predicted outputs')
+    parser.add_argument('--prediction_dir', type=str, help = 'path to the txt files of the predicted outputs')
     parser.add_argument('--video_dir', type=str, help = 'path to the directory that contains image sequence and gt')
+    parser.add_argument('--gt_name', type=str, help= "naming rules for ground truth")
     parser.add_argument('--save_dir', type=str, default= './results')
     parser.add_argument('--evaluation_type', type=str, help= "flag for single mulitple or cell")
-    parser.add_argument('--threshold', type=int, default = 0.5, help= "threshold for correctly tracked")
+    parser.add_argument('--threshold', type=float, default = 0.5, help= "threshold for correctly tracked")
+    parser.add_argument('--writeout', type=bool, default = False, help= "True if there is video output needed")
     args= parser.parse_args()
 
+    #list all the videos to be evaluated
+    video_list = [folder for folder in os.listdir(args.video_dir) if '.' not in folder]
+
+    print('The video(s) to be evaluated', video_list)
+    print('Evaluation type is', args.evaluation_type)
+    # A list to hold the summary for reporting
+    output_list = []
+
+    if args.evaluation_type == 'single':
+        accuracy_list = []
+        robustness_list = []
+    elif args.evaluation_type == 'multiple':
+        pass
+    else:
+        pass
+
+    for folder in video_list:
+        prediction = os.path.join(args.prediction_dir, folder+'.txt')
+        print('Prediction file is', prediction)
+        gt = os.path.join(args.video_dir, folder, args.gt_name)
+        print('Ground truth is', gt)
+
+        if args.evaluation_type == 'single':
+            name, accuracy, robustness = single_eval(prediction, gt, args.save_dir, args.threshold, writeout = args.writeout)
+            accuracy_list.append(accuracy)
+            robustness_list.append(robustness)
+            text = '{}: Accuracy is {} % Robustness is {} %'.format(name, round(accuracy*100, 2), round (robustness*100, 2))
+            print(text)
+            output_list.append(text)
+        elif args.evaluation_type == 'multiple':
+            pass
+        else:
+            pass
+
+    if args.evaluation_type == 'single':
+        if len(accuracy_list) >0:
+            total_accuracy = sum(accuracy_list)/len(accuracy_list)
+        else:
+            print('No accuracy')
+        
+        if len(robustness_list) >0:
+            total_robustness = sum(robustness_list)/len(robustness_list)
+        else:
+            print('No robustness')
+
+        text = '{}: Accuracy is {} % Robustness is {} %'.format(
+            args.video_dir.split('/')[-1], 
+            round(total_accuracy*100, 2), 
+            round(total_robustness *100, 2))
+        #print(text)
+        output_list.append(text)
+    elif args.evaluation_type == 'multiple':
+        pass
+    else:
+        pass
+
+    #writing out the results
+    with open(os.path.join(args.save_dir, args.prediction_dir.split('/')[-1]+'_results.txt'), 'w') as file:
+        for item in output_list:
+            file.write(''.join([item, '\n']))
 
 if __name__ == '__main__':
     main()
