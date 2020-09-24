@@ -250,10 +250,64 @@ def single_eval(prediction, gt, save_dir, threshold, writeout=False):
     return video_name, accuracy, robustness
 
 
+def multiple_eval(prediction, gt, save_dir, threshold, writeout=False):
+    video_name = prediction.split('/')[-1].split('.')[0]
+    prediction_dict = process_multiple(prediction)
+    gt_dict= process_multiple(gt)
+    #print(prediction_dict.keys())
+    #print('prediction is', prediction_dict.get(1))
+    #print('--------------------------------------------------------------------------')
+    #print(gt_dict.keys())
+    #print('ground truth is', gt_dict.get(1))
+
+    if os.path.exists(save_dir):
+        print('Save directory already exists')
+    else:
+        os.makedirs(save_dir)
+        print('Making new save dir')
+
+    # Create an accumulator that will be updated during each frame
+    acc = mm.MOTAccumulator(auto_id=True)
+
+    #predcition needs a few frame to start
+    for key in sorted(prediction_dict.keys())[0:3]:
+        predcition_in_frame = prediction_dict.get(key)
+        gt_in_frame = gt_dict.get(key)
+
+        #process the file for motmetrics
+        prediction_object = []   
+        prediction_bbox_list = []
+
+        gt_object = []
+        gt_bbox_list = []
+
+        for item in predcition_in_frame:
+            if item[5] > threshold:
+                prediction_object.append(item[0])
+                prediction_bbox_list.append([item[1], item[2], item[3], item[4]])
+        prediction_bbox_list = np.array(prediction_bbox_list)
+        print('prediction_object', len(prediction_object))
+        print('prediction box', len(prediction_bbox_list))
 
 
-def multi_eval(predition, gt, threshold,single=True):
-    pass
+        for item in gt_in_frame:
+            if item[5]>0:
+                gt_object.append(item[0])
+                gt_bbox_list.append([item[1], item[2], item[3], item[4]])
+        gt_bbox_list = np.array(gt_bbox_list)
+        print('gt_object', len(gt_object))
+        print('gt box', len(gt_bbox_list))
+
+        #compute distance using solver
+
+        gt_pred_distance = mm.distances.iou_matrix(gt_bbox_list, prediction_bbox_list)
+        print('gt len', len(gt_bbox_list))
+        print('pred len', len(prediction_bbox_list))
+
+        print('distance matrix', gt_pred_distance.shape) #dimension correct
+
+    # update once for each frame
+    #acc.update([])
 
 def cell_eval(prediction, gt, threshold, single=True):
     pass    
