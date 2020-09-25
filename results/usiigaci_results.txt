@@ -1,0 +1,12 @@
+experiment1
+num_frames is 300.0
+precision is 0.0532
+recall is 0.4818
+num_matches is 602.0
+num_switches is 8.0
+num_false_positives is 10860.0
+num_misses is 656.0
+mostly_tracked is 0.0
+mostly_lost is 0.0
+
+C2C12: Precision is 5.32% Recall is 48.18%

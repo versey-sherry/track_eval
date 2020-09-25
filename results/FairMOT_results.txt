@@ -1,0 +1,25 @@
+MOT20-02
+num_frames is 2782.0
+mota is 0.5681
+motp is 0.2018
+precision is 0.9272
+recall is 0.6236
+num_switches is 1013.0
+num_false_positives is 7573.0
+num_misses is 58247.0
+mostly_tracked is 90.0
+mostly_lost is 13.0
+
+MOT20-01
+num_frames is 429.0
+mota is 0.624
+motp is 0.2126
+precision is 0.9175
+recall is 0.6946
+num_switches is 161.0
+num_false_positives is 1241.0
+num_misses is 6069.0
+mostly_tracked is 35.0
+mostly_lost is 8.0
+
+MOT20: M0TA is 59.61% MOTP is 20.72% Precision is 92.24% Recall is 65.91%
