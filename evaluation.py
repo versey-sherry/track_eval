@@ -22,11 +22,9 @@ Mostly Lost: The ratio of ground-truth trajectories that are covered by a track 
 of their respective life span.
 
 Cell Tracking evaluation metrics
-
 Association accuracy assigned to a track (computer-generated) for each frame. The association accuracy was computed as the
-number of true positive associations divided by the number of associations in the ground-truth.
-Target effectiveness is computed as the number of the assigned track observations
-over the total number of frames of the target
+number of true positive associations divided by the number of associations in the ground-truth. [To be done]
+Target effectiveness is computed as the number of the assigned track observations over the total number of frames of the target
 
 All video dirs should be in the same dir, to process LaSOT
 find . -maxdepth 2  -print -exec mv {} . \;
@@ -47,6 +45,14 @@ python evaluation.py --prediction_dir result_example/mot_results/MOT20/FairMOT \
 --evaluation_type multiple \
 --threshold 0.5 \
 --writeout Ture
+
+python evaluation.py --prediction_dir result_example/cell_results/C2C12/usiigaci \
+--video_dir gt_example/C2C12 \
+--gt_name exp1_F0001.xml \
+--evaluation_type cell \
+--threshold 15 \
+--writeout Ture
+
 
 
 
@@ -174,7 +180,6 @@ def process_cellgt(xml_file):
             current_id = ele.attrib['id']
         if ele.tag == 's':
             dict_by_id[current_id].append([ele.attrib['i'], ele.attrib['x'], ele.attrib['y']])
-
     # process the file to be a gt dictionary with key being frame number
     gt = defaultdict(list)
     for key in dict_by_id.keys():
@@ -222,7 +227,7 @@ def single_eval(prediction, gt, save_dir, threshold, writeout=False):
     frame_num = 1
 
     #loop through every frame in ground truth
-    while frame_num <= len(gt_dict):
+    while frame_num <= min(len(gt_dict), len(prediction_dict)):
         prediction = prediction_dict.get(frame_num)[0]
         gt = gt_dict.get(frame_num)[0]
 
@@ -299,9 +304,9 @@ def multiple_eval(prediction, gt, save_dir, threshold, writeout=False):
     # Create an accumulator that will be updated during each frame
     acc = mm.MOTAccumulator(auto_id=True)
 
-    #predcition needs a few frame to start
+    #prediction needs a few frame to start
     for key in sorted(prediction_dict.keys()):
-        predcition_in_frame = prediction_dict.get(key)
+        prediction_in_frame = prediction_dict.get(key)
         gt_in_frame = gt_dict.get(key)
 
         if writeout:
@@ -315,7 +320,7 @@ def multiple_eval(prediction, gt, save_dir, threshold, writeout=False):
         gt_object = []
         gt_bbox_list = []
 
-        for item in predcition_in_frame:
+        for item in prediction_in_frame:
             if item[5] > threshold:
                 prediction_object.append(item[0])
                 prediction_bbox_list.append([item[1], item[2], item[3], item[4]])
@@ -326,7 +331,7 @@ def multiple_eval(prediction, gt, save_dir, threshold, writeout=False):
                     track_label = str(int(item[0]))
                     cv2.rectangle(img, (bbox[0], bbox[1]), (bbox[2], bbox[3]), get_color(int(item[0])), 3)
                     cv2.putText(img, track_label, (bbox[0]+5, bbox[1]+20), 0, 0.6, (255,255,255),thickness=2)
-
+        prediction_bbox_list = np.array(prediction_bbox_list)
         #print('prediction_object', prediction_object)
         #print('prediction box', len(prediction_bbox_list))
 
@@ -424,8 +429,148 @@ def multiple_eval(prediction, gt, save_dir, threshold, writeout=False):
 
     return video_name, report, mota, motp, precision, recall
 
-def cell_eval(prediction, gt, threshold, single=True):
-    pass    
+def cell_eval(prediction, gt, save_dir, threshold = 10, writeout=False):
+    video_name = prediction.split('/')[-1].split('.')[0]
+    prediction_dict = process_multiple(prediction)
+    gt_dict= process_cellgt(gt)
+
+    #print(prediction_dict)
+    #print(gt_dict)
+    #print(prediction_dict.keys())
+    #print(prediction_dict.get(1))
+    #print(gt_dict.keys())
+    #print(gt_dict.get(1))
+
+    if os.path.exists(save_dir):
+        print('Save directory already exists')
+    else:
+        os.makedirs(save_dir)
+        print('Making new save dir')
+    
+    #preparation for writing out the video
+    if writeout:
+        img_dir = os.path.join('/'.join(gt.split('/')[0:-1]), 'img')
+        video_name = prediction.split('/')[-1].split('.')[0]
+        images = sorted([file for file in os.listdir(img_dir) if '.tif' in file])
+        #print(images)
+        img = cv2.imread(os.path.join(img_dir, images[0]))
+        height, width, depth = img.shape
+        size = (width, height)
+        file_name = file_name = '_'.join([prediction.split('/')[-2], video_name, 'video.mp4'])
+        file_name = os.path.join(save_dir, file_name)
+        print('Video saved to', file_name)
+        out = cv2.VideoWriter(file_name,cv2.VideoWriter_fourcc(*'MP4V'), 20, size)
+    
+    # Create an accumulator that will be updated during each frame
+    acc = mm.MOTAccumulator(auto_id=True)
+
+    # loop through all predictions
+    for key in sorted(prediction_dict.keys()):
+        prediction_in_frame = prediction_dict.get(key)
+        gt_in_frame = gt_dict.get(key)
+
+        #print(prediction_in_frame)
+        #print(gt_in_frame)
+
+        #process image for output
+        if writeout:
+            img = cv2.imread(os.path.join(img_dir, images[key-1]), -1)
+            img = np.uint8(cv2.normalize(img, dst=None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX))
+            img_out = np.empty((height, width, depth))
+            #print(os.path.join(img_dir, images[key-1]))
+            #print(img.dtype)
+            #process the 16 bit imgage to 8 bit
+            img_out[:, :, 0] = np.uint8(img)
+            img_out[:, :, 1] = np.uint8(img)
+            img_out[:, :, 2] = np.uint8(img)
+            img = np.uint8(img_out)
+            
+        
+        #process the file for mot metrics
+        prediction_object = []
+        prediction_coor = []
+
+        gt_object = []
+        gt_coor = []
+        
+        #plot gt with white box
+        for item in gt_in_frame:
+            gt_object.append(item[0])
+            gt_coor.append([item[1], item[2]])
+
+            #plot boxes over the image
+            if writeout:
+                bbox = [int(item[1]) -5, int(item[2]) -5 , int(item[1]) +10, int(item[2]) +10]
+                cv2.rectangle(img, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (255,255,255), 3)
+        gt_coor = np.array(gt_coor)
+
+        #plot prediction with color
+        for item in prediction_in_frame:
+            prediction_object.append(item[0])
+            prediction_coor.append([item[1], item[2]])
+
+            #plot boxes over the image
+            if writeout:
+                bbox = [int(item[1]) -5, int(item[2]) -5 , int(item[1]) +10, int(item[2]) +10]
+                track_label = str(int(item[0]))
+                cv2.rectangle(img, (bbox[0], bbox[1]), (bbox[2], bbox[3]), get_color(int(item[0])), 3)
+                cv2.putText(img, track_label, (bbox[0]+5, bbox[1]+20), 0, 0.6, (255,255,255),thickness=2)
+        prediction_coor = np.array(prediction_coor)
+        
+        gt_pred_distance = mm.distances.norm2squared_matrix(gt_coor, prediction_coor, max_d2=threshold)
+        #print(gt_pred_distance)
+        frameid = acc.update(gt_object, prediction_object, gt_pred_distance)
+        frame_stats = acc.mot_events.loc[frameid]
+        #print(frame_stats)
+
+        if writeout:
+            overlay = img.copy()
+
+            #overlay matches with green shade
+            if 'MATCH' in np.unique(frame_stats['Type']):
+                match_list = np.array(frame_stats.loc[frame_stats['Type'] == 'MATCH']['OId'])
+                match_coor = [gt_coor[gt_object.index(item)] for item in gt_object if item in match_list]
+                for item in match_coor:
+                    cv2.rectangle(overlay, (item[0]-5, item[1]-5), (item[0]+10, item[1]+10), (0,255,0), -1)
+
+            #overlay miss with white
+            if 'MISS' in np.unique(frame_stats['Type']):
+                miss_list = np.array(frame_stats.loc[frame_stats['Type'] == 'MISS']['OId'])
+                miss_coor = [gt_coor[gt_object.index(item)] for item in gt_object if item in miss_list]
+                for item in miss_coor:
+                    cv2.rectangle(overlay,(item[0]-5, item[1]-5), (item[0]+10, item[1]+10), (255,255,255), -1)
+
+            #overlay swith with red
+            if 'SWITCH' in np.unique(frame_stats['Type']):
+                switch_list = np.array(frame_stats.loc[frame_stats['Type'] == 'SWITCH']['OId'])
+                switch_coor = [gt_coor[gt_object.index(item)] for item in gt_object if item in switch_list]
+                for item in switch_coor:
+                    cv2.rectangle(overlay,(item[0]-5, item[1]-5), (item[0]+10, item[1]+10), (0,0,255), -1)
+
+            #overlay the shades
+            alpha = 0.6
+            img =cv2.addWeighted(overlay, alpha, img, 1 - alpha, 0)
+            out.write(img)
+    
+    #Accumulator has been populated, compute metrics
+    mh = mm.metrics.create()
+
+    summary = mh.compute(acc, metrics=['num_frames', 'precision', 'recall',
+        'num_matches','num_switches', 'num_false_positives', 'num_misses', 'mostly_tracked', 'mostly_lost'], name=video_name)
+    #summary = mh.compute(acc, metrics=mm.metrics.motchallenge_metrics, name='acc')
+    #print(summary)
+    report = ''
+    for col in summary.columns:
+        text = ' '.join([str(col), 'is', str(round(summary.iloc[0][col],4))])+'\n'
+        report = ''.join([report, text])
+
+    precision = summary.iloc[0]['precision']
+    recall = summary.iloc[0]['recall']
+
+    if writeout:
+        out.release()
+
+    return video_name, report, precision, recall
 
 def main():
     parser = argparse.ArgumentParser(description='tracker evaluation')
@@ -455,7 +600,8 @@ def main():
         precision_list = []
         recall_list = []
     else:
-        pass
+        precision_list = []
+        recall_list = []
 
     for folder in video_list:
         prediction = os.path.join(args.prediction_dir, folder+'.txt')
@@ -482,7 +628,12 @@ def main():
             print(text)
             output_list.append(text)
         else:
-            pass
+            name, report, precision, recall = cell_eval(prediction, gt, args.save_dir, args.threshold, writeout = args.writeout)
+            precision_list.append(precision)
+            recall_list.append(recall)
+            text = '{}\n{}'.format(name, report)
+            print(text)
+            output_list.append(text)
 
     if args.evaluation_type == 'single':
         if len(accuracy_list) >0:
@@ -531,7 +682,23 @@ def main():
         print(text)
         output_list.append(text)
     else:
-        pass
+        if len(precision_list) >0:
+            total_precision = sum(precision_list)/len(precision_list)
+        else:
+            print('No Precision')
+
+        if len(recall_list) >0:
+            total_recall = sum(recall_list)/len(recall_list)
+        else:
+            print('No Recall')
+
+        text = '{}: Precision is {}% Recall is {}%'.format(
+            args.video_dir.split('/')[-1], 
+            round(total_precision *100, 2),
+            round(total_recall *100, 2))
+        print(text)
+        output_list.append(text)
+
 
     #writing out the results
     with open(os.path.join(args.save_dir, args.prediction_dir.split('/')[-1]+'_results.txt'), 'w') as file:
