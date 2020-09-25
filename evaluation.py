@@ -145,6 +145,13 @@ def process_multiple(txt_file):
             info[line[0]].append(line[1:])
     return info
 
+#get color for different id
+#https://github.com/ifzhang/FairMOT/blob/master/src/lib/tracking_utils/visualization.py
+def get_color(idx):
+    idx = idx * 3
+    color = ((37 * idx) % 255, (17 * idx) % 255, (29 * idx) % 255)
+    return color
+
 #process C2C12 cell tracking ground truth that uses xml annotation
 #return a dictionary with frame as key and a list of [<id>, <x>, <y>] presented in the frame
 def process_cellgt(xml_file):
@@ -297,6 +304,10 @@ def multiple_eval(prediction, gt, save_dir, threshold, writeout=False):
         predcition_in_frame = prediction_dict.get(key)
         gt_in_frame = gt_dict.get(key)
 
+        if writeout:
+            img = cv2.imread(os.path.join(img_dir, images[key-1]))
+            #print(os.path.join(img_dir, images[key-1]))
+
         #process the file for motmetrics
         prediction_object = []   
         prediction_bbox_list = []
@@ -308,8 +319,15 @@ def multiple_eval(prediction, gt, save_dir, threshold, writeout=False):
             if item[5] > threshold:
                 prediction_object.append(item[0])
                 prediction_bbox_list.append([item[1], item[2], item[3], item[4]])
-        prediction_bbox_list = np.array(prediction_bbox_list)
-        #print('prediction_object', len(prediction_object))
+                
+                #plot boxes over the image
+                if writeout:
+                    bbox = [int(item[1]), int(item[2]), int(item[1]+item[3]), int(item[2]+item[4])]
+                    track_label = str(int(item[0]))
+                    cv2.rectangle(img, (bbox[0], bbox[1]), (bbox[2], bbox[3]), get_color(int(item[0])), 3)
+                    cv2.putText(img, track_label, (bbox[0]+5, bbox[1]+20), 0, 0.6, (255,255,255),thickness=2)
+
+        #print('prediction_object', prediction_object)
         #print('prediction box', len(prediction_bbox_list))
 
         for item in gt_in_frame:
@@ -317,7 +335,7 @@ def multiple_eval(prediction, gt, save_dir, threshold, writeout=False):
                 gt_object.append(item[0])
                 gt_bbox_list.append([item[1], item[2], item[3], item[4]])
         gt_bbox_list = np.array(gt_bbox_list)
-        #print('gt_object', len(gt_object))
+        #print('gt_object', gt_object)
         #print('gt box', len(gt_bbox_list))
 
         #compute distance using solver
@@ -331,11 +349,57 @@ def multiple_eval(prediction, gt, save_dir, threshold, writeout=False):
         #update the event accumulator
         #acc.update update the pairwise relation solver and returns the frame id
         frameid = acc.update(gt_object, prediction_object, gt_pred_distance)
-        #print(acc.mot_events.loc[frameid])
+        frame_stats = acc.mot_events.loc[frameid]
+        #print('List of index',np.unique(frame_stats['Type']))
+        if writeout:
+            overlay = img.copy()
+            #print(frame_stats.columns)
 
+            #overlay matches with green shade
+            if 'MATCH' in np.unique(frame_stats['Type']):
+                #print(frame_stats.loc[frame_stats['Type'] == 'MATCH'])
+                match_list = np.array(frame_stats.loc[frame_stats['Type'] == 'MATCH']['OId'])
+                #print('match ids in gt are',match_list)
+                match_bbox = [gt_bbox_list[gt_object.index(item)] for item in gt_object if item in match_list]
+                for item in match_bbox:
+                    cv2.rectangle(overlay, (item[0], item[1]), (item[0]+item[2], item[1]+item[3]), (0,255,0), -1)
 
+            #overlay false positive with red
+            if 'FP' in np.unique(frame_stats['Type']):
+                #print(frame_stats.loc[frame_stats['Type']=='FP'])
+                fp_list = np.array(frame_stats.loc[frame_stats['Type'] == 'FP']['HId'])
+                #print('fp list', fp_list)
+                fp_bbox = [prediction_bbox_list[prediction_object.index(item)] for item in prediction_object if item in fp_list]
+                #print(fp_bbox)
+                for item in fp_bbox:
+                    cv2.rectangle(overlay, (int(item[0]),int(item[1])), (int(item[0]+item[2]), int(item[1]+item[3])), (0,0,255), -1)
+            
+            #overlay miss with white
+            if 'MISS' in np.unique(frame_stats['Type']):
+                #print(frame_stats.loc[frame_stats['Type']== 'MISS'])
+                miss_list = np.array(frame_stats.loc[frame_stats['Type'] == 'MISS']['OId'])
+                #print('miss list', miss_list)
+                miss_bbox = [gt_bbox_list[gt_object.index(item)] for item in gt_object if item in miss_list]
+                for item in miss_bbox:
+                    cv2.rectangle(overlay, (item[0], item[1]), (item[0]+item[2], item[1]+item[3]), (255,255,255), -1)
+            
+            #overlay switch with red
+            if 'SWITCH' in np.unique(frame_stats['Type']):
+                #print(frame_stats.loc[frame_stats['Type']== 'MISS'])
+                switch_list = np.array(frame_stats.loc[frame_stats['Type'] == 'SWITCH']['OId'])
+                #print('switch list', switch_list)
+                switch_bbox = [gt_bbox_list[gt_object.index(item)] for item in gt_object if item in switch_list]
+                for item in switch_bbox:
+                    cv2.rectangle(overlay, (item[0], item[1]), (item[0]+item[2], item[1]+item[3]), (0,0,255), -1)
+            
+            #overlay the shades
+            alpha = 0.3
+            img =cv2.addWeighted(overlay, alpha, img, 1 - alpha, 0)
+            out.write(img)
+        
     # pandas dataframe has events for all the frames
     #print(acc.mot_events)
+    #print(np.unique(acc.mot_events['Type']))
 
     #Accumulator has been populated, compute metrics
     mh = mm.metrics.create()
@@ -353,13 +417,15 @@ def multiple_eval(prediction, gt, save_dir, threshold, writeout=False):
     motp = summary.iloc[0]['motp']
     precision = summary.iloc[0]['precision']
     recall = summary.iloc[0]['recall']
+    
+    #outputting video
+    if writeout:
+        out.release()
+
     return video_name, report, mota, motp, precision, recall
 
 def cell_eval(prediction, gt, threshold, single=True):
     pass    
-
-def visualization(prediction, gt, threshold):
-    pass
 
 def main():
     parser = argparse.ArgumentParser(description='tracker evaluation')
