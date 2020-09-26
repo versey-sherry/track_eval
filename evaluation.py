@@ -33,21 +33,21 @@ find . -maxdepth 2  -print -exec mv {} . \;
 '''
 example
 python evaluation.py --prediction_dir result_example/sot_results/TB-100/goturn \
---video_dir gt_example/TB-100 \
+--video_dir TB-100 \
 --gt_name groundtruth_rect.txt \
 --evaluation_type single \
 --threshold 0.5 \
---writeout Ture
+--writeout True
 
 python evaluation.py --prediction_dir result_example/mot_results/MOT20/FairMOT \
---video_dir gt_example/MOT20 \
+--video_dir MOT20/train \
 --gt_name gt/gt.txt \
 --evaluation_type multiple \
 --threshold 0.5 \
 --writeout Ture
 
 python evaluation.py --prediction_dir result_example/cell_results/C2C12/usiigaci \
---video_dir gt_example/C2C12 \
+--video_dir C2C12 \
 --gt_name exp1_F0001.xml \
 --evaluation_type cell \
 --threshold 15 \
@@ -377,7 +377,8 @@ def multiple_eval(prediction, gt, save_dir, threshold, writeout=False):
                 fp_bbox = [prediction_bbox_list[prediction_object.index(item)] for item in prediction_object if item in fp_list]
                 #print(fp_bbox)
                 for item in fp_bbox:
-                    cv2.rectangle(overlay, (int(item[0]),int(item[1])), (int(item[0]+item[2]), int(item[1]+item[3])), (0,0,255), -1)
+                    cv2.rectangle(overlay, (int(item[0]),int(item[1])), 
+                                  (int(item[0]+item[2]), int(item[1]+item[3])), (0,0,255), -1)
             
             #overlay miss with white
             if 'MISS' in np.unique(frame_stats['Type']):
